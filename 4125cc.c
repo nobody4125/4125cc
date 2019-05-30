@@ -79,6 +79,93 @@ void tokenize() {
     tokens[i].input = p;
 }
 
+enum {
+    ND_NUM = 256,       // 整数のノードの型
+};
+
+typedef struct Node {
+    int ty;             // 演算子かND_NUM
+    struct Node *lhs;   // 左辺
+    struct Node *rhs;   // 右辺
+    int val;            // tyがND_NUMの場合のみ使う
+} Node;
+
+int pos = 0;            // 次に読み込むトークン列の位置
+
+Node *new_node(int ty, Node *lhs, Node *rhs) {
+    Node *node = (Node *)malloc(sizeof(Node));
+    node->ty = ty;
+    node->lhs = lhs;
+    node->rhs = rhs;
+    return node;
+}
+
+Node *new_node_num(int val) {
+    Node *node = (Node *)malloc(sizeof(Node));
+    node->ty = ND_NUM;
+    node->val = val;
+    return node;
+}
+
+int consume(int ty) {
+    if (tokens[pos].ty != ty) {
+        return 0;
+    }
+    pos++;
+    return 1;
+}
+
+Node *expr();
+Node *mul();
+Node *term();
+
+Node *expr() {
+    Node *node = mul();
+
+    while (1) {
+        if (consume('+')) {
+            node = new_node('+', node, mul());
+        } else if (consume('-')) {
+            node = new_node('-', node, mul());
+        } else {
+            return node;
+        }
+    }
+}
+
+
+Node *mul() {
+    Node *node = term();
+
+    while (1) {
+        if (consume('*')) {
+            node = new_node('*', node, term());
+        } else if (consume('/')) {
+            node = new_node('/', node, term());
+        } else {
+            return node;
+        }
+    }
+}
+
+Node *term() {
+    // 次のトークンが'('なら、"(" expr ")" のはず
+    if (consume('(')) {
+        Node *node = expr();
+        if (!consume(')')) {
+            error_at(tokens[pos].input, "開き括弧に対応する閉じ括弧がありません。");
+        }
+        return node;
+    }
+
+    // そうでなければ数値のはず
+    if (tokens[pos].ty == TK_NUM) {
+        return new_node_num(tokens[pos++].val);
+    }
+
+    error_at(tokens[pos].input, "数値でも開き括弧でもないトークンです。");
+}
+
 
 int main(int argc, char **argv) {
     if (argc != 2) {
