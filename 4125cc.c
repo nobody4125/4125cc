@@ -166,6 +166,37 @@ Node *term() {
     error_at(tokens[pos].input, "数値でも開き括弧でもないトークンです。");
 }
 
+void gen(Node *node) {
+    if (node->ty == ND_NUM) {
+        printf("  push %d\n", node->val);
+        return;
+    }
+
+    gen(node->lhs);
+    gen(node->rhs);
+
+    printf("  pop rdi\n");
+    printf("  pop rax\n");
+
+    switch (node->ty) {
+    case '+':
+        printf("  add rax, rdi\n");
+        break;
+    case '-':
+        printf("  sub rax, rdi\n");
+        break;
+    case '*':
+        printf("  imul rdi\n");
+        break;
+    case '/':
+        printf("  cqo\n");
+        printf("  idiv rdi\n");
+        break;
+    }
+
+    printf("  push rax\n");
+}
+
 
 int main(int argc, char **argv) {
     if (argc != 2) {
@@ -173,49 +204,22 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // トークナイズする
+    // トークナイズしてパースする
     user_input = argv[1];
     tokenize();
+    Node *node = expr();
 
     // アセンブリの前半部分を出力
     printf(".intel_syntax noprefix\n");
     printf(".global main\n");
     printf("main:\n");
 
-    // 式の最初は和でなければならないので、それをチェックして
-    // 最初のmov命令を出力
-    if (tokens[0].ty != TK_NUM) {
-        error_at(tokens[0].input, "数ではありません");
-    }
-    printf("  mov rax, %d\n", tokens[0].val);
+    // 抽象構文木を降りながらコード生成
+    gen(node);
 
-    // `+ <数>`あるいは`- <数>`というトークンの並びを消費しつつ
-    // アセンブリを出力
-    int i = 1;
-    while (tokens[i].ty != TK_EOF) {
-        if (tokens[i].ty == '+') {
-            i++;
-            if (tokens[i].ty != TK_NUM) {
-                error_at(tokens[i].input, "数ではありません");
-            }
-            printf("  add rax, %d\n", tokens[i].val);
-            i++;
-            continue;
-        }
-
-        if (tokens[i].ty == '-') {
-            i++;
-            if (tokens[i].ty != TK_NUM) {
-                error_at(tokens[i].input, "数ではありません");
-            }
-            printf("  sub rax, %d\n", tokens[i].val);
-            i++;
-            continue;
-        }
-
-        error_at(tokens[i].input, "予期しないトークンです");
-    }
-
+    // スタックトップに式全体の値が残っているはずなので
+    // それをRAXにロードしてから関数からの返り値とする
+    printf("  pop rax\n");
     printf("  ret\n");
 
     return 0;
